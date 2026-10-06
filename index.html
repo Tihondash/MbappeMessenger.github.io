@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>foio</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f5f5f5; color: #333; overflow: hidden; }
+        
+        #reg-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000; background: #fff; display: none; }
+        .reg-container { width: 100%; max-width: 300px; margin: 100px auto; text-align: center; padding: 20px; }
+        
+        input[type="text"] { width: 100%; border: 2px solid #00A3E0; padding: 12px; font-size: 16px; outline: none; background: #fff; margin-bottom: 10px; }
+        button { width: 100%; background: #00A3E0; color: #fff; border: none; padding: 14px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
+        button:active { background: #008fbc; }
+
+        #header { height: 56px; line-height: 56px; background: #00A3E0; color: #fff; font-size: 20px; font-weight: 500; padding: 0 20px; position: absolute; top: 0; width: 100%; box-shadow: 0 2px 5px rgba(0,0,0,0.1); z-index: 100; display: flex; justify-content: space-between; align-items: center; }
+        #header-title { flex-grow: 1; }
+        #settings-btn { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; padding: 0 10px; width: auto; height: auto; text-transform: none; letter-spacing: normal; }
+        #settings-btn:active { background: none; }
+
+        #chat-container { position: absolute; top: 56px; bottom: 60px; width: 100%; overflow-y: auto; padding: 10px 0; -webkit-overflow-scrolling: touch; background: #fff; }
+        .msg { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; display: table; width: 100%; }
+        
+        .avatar { width: 42px; height: 42px; line-height: 42px; text-align: center; color: #fff; font-size: 18px; font-weight: bold; display: table-cell; vertical-align: middle; text-transform: uppercase; }
+        
+        .msg-body { display: table-cell; vertical-align: top; padding-left: 15px; }
+        .nick-os-wrap { display: flex; align-items: center; margin-bottom: 2px; }
+        .nick { font-weight: bold; font-size: 13px; color: #00A3E0; margin-right: 5px; }
+        .os-icon { width: 16px; height: 16px; vertical-align: middle; }
+        .text { font-size: 15px; line-height: 1.4; color: #222; word-break: break-word; }
+
+        #footer { position: absolute; bottom: 0; width: 100%; height: 60px; background: #fff; border-top: 1px solid #ddd; display: table; }
+        #input-wrap { display: table-cell; width: 80%; vertical-align: middle; padding-left: 10px; }
+        #msg-input { width: 100%; border: none; padding: 10px; font-size: 16px; outline: none; }
+        #btn-wrap { display: table-cell; width: 20%; vertical-align: middle; padding: 0 10px; }
+        #send-btn { width: 100%; padding: 10px 5px; font-size: 12px; }
+
+        #settings-popup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+        .settings-content { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); width: 90%; max-width: 400px; text-align: center; }
+        .settings-content h2 { margin-top: 0; color: #00A3E0; }
+        .settings-content label { display: block; margin-top: 15px; margin-bottom: 5px; color: #333; font-size: 14px; text-align: left; }
+        .settings-content input[type="text"], .settings-content input[type="color"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 10px; font-size: 15px; outline: none; }
+        .settings-content input[type="color"] { height: 40px; padding: 0; border: none; cursor: pointer; }
+        .settings-content button { margin-top: 10px; width: calc(100% - 20px); max-width: 180px; display: inline-block; margin: 10px 5px 0 5px; }
+        .settings-content .btn-close { background: #9E9E9E; }
+        .settings-content .btn-close:active { background: #757575; }
+        .settings-content .btn-delete { background: #F44336; }
+        .settings-content .btn-delete:active { background: #D32F2F; }
+
+        #confirm-popup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2001; justify-content: center; align-items: center; }
+        .confirm-content { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); width: 90%; max-width: 300px; text-align: center; }
+        .confirm-content h3 { margin-top: 0; color: #00A3E0; }
+        .confirm-content p { margin-bottom: 20px; color: #333; }
+        .confirm-content button { width: calc(50% - 10px); display: inline-block; margin: 0 5px; }
+        .confirm-content .btn-cancel { background: #9E9E9E; }
+        .confirm-content .btn-cancel:active { background: #757575; }
+    </style>
+</head>
+<body>
+    <div id="reg-screen">
+        <div class="reg-container">
+            <h1 style="color:#00A3E0; font-size: 48px; margin-bottom: 10px;">foio</h1>
+            <p style="margin-bottom: 20px; color: #666;">Enter nickname (latin/numbers)</p>
+            <input type="text" id="nick-input" placeholder="Nickname..." maxlength="15">
+            <button id="join-btn">Start</button>
+        </div>
+    </div>
+
+    <div id="main-screen">
+        <div id="header">
+            <span id="header-title">foio</span>
+            <button id="settings-btn">&#9776;</button>
+        </div>
+        <div id="chat-container"></div>
+        <div id="footer">
+            <div id="input-wrap">
+                <input type="text" id="msg-input" placeholder="Message...">
+            </div>
+            <div id="btn-wrap">
+                <button id="send-btn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-popup">
+        <div class="settings-content">
+            <h2>Settings</h2>
+            <label for="new-nick-input">Change Nickname:</label>
+            <input type="text" id="new-nick-input" placeholder="New Nickname..." maxlength="15">
+            <button id="change-nick-btn">Change Nick</button>
+
+            <label for="avatar-color-picker">Avatar Color:</label>
+            <input type="color" id="avatar-color-picker">
+            <button id="save-color-btn">Save Color</button>
+
+            <button id="delete-account-btn" class="btn-delete">Delete Account</button>
+            <button id="close-settings-btn" class="btn-close">Close</button>
+        </div>
+    </div>
+
+    <div id="confirm-popup">
+        <div class="confirm-content">
+            <h3 id="confirm-title">Confirm Action</h3>
+            <p id="confirm-message">Are you sure?</p>
+            <button id="confirm-yes-btn">Yes</button>
+            <button id="confirm-no-btn" class="btn-cancel">No</button>
+        </div>
+    </div>
+
+    <script>
+        var firebaseConfig = {
+            aapiKey: "AIzaSyAh2y6xXfjpMUeGc-YpRHG1jcp4RNhdfNE",
+  authDomain: "bingo--messenger.firebaseapp.com",
+  databaseURL: "https://bingo--messenger-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "bingo--messenger",
+  storageBucket: "bingo--messenger.firebasestorage.app",
+  messagingSenderId: "1036558754530",
+  appId: "1:1036558754530:web:47577c4ac6d077cc3434bb",
+  measurementId: "G-2KPX0PBH0P"
+};
+
+        // Безопасное чтение из localStorage для WebView
+        var myNick = null;
+        var myAvatarColor = '#00A3E0'; 
+        try {
+            myNick = localStorage.getItem('foio_nick');
+            myAvatarColor = localStorage.getItem('foio_avatar_color') || '#00A3E0'; 
+        } catch (e) {
+            console.warn("DOM Storage is not available.");
+        }
+
+        var currentConfirmAction = null;
+        var osInfo = getOS();
+        console.log("ОС текущего пользователя:", osInfo);
+
+        var osIcons = {
+            'Android': 'https://cdn-icons-png.flaticon.com/128/152/152753.png',
+            'iOS': 'https://cdn-icons-png.flaticon.com/128/0/747.png',
+            'Mac OS': 'https://cdn-icons-png.flaticon.com/128/0/747.png',
+            'Windows': 'https://cdn-icons-png.flaticon.com/128/732/732076.png',
+            'Linux': 'https://cdn-icons-png.flaticon.com/128/13/13702.png',
+            'Symbian': 'https://cdn-icons-png.flaticon.com/128/16060/16060948.png',
+            'Other': ''
+        };
+
+        function getOS() {
+            var userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            if (/android/i.test(userAgent)) return "Android";
+            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) return "iOS";
+            if (/Mac/i.test(userAgent)) return "Mac OS";
+            if (/Windows/i.test(userAgent) || /Windows Phone/i.test(userAgent)) return "Windows";
+            if (/Linux/i.test(userAgent)) return "Linux";
+            if (/Symbian/i.test(userAgent)) return "Symbian";
+            return "Other";
+        }
+
+        if (!myNick) {
+            document.getElementById('reg-screen').style.display = 'block';
+        } else {
+            document.getElementById('new-nick-input').value = myNick;
+            document.getElementById('avatar-color-picker').value = myAvatarColor;
+        }
+
+        function getAvColor(nick) {
+            if (nick === myNick && myAvatarColor) {
+                return 'background:' + myAvatarColor;
+            }
+            var sum = 0;
+            for (var i = 0; i < nick.length; i++) sum += nick.charCodeAt(i);
+            var defaultColors = ['#F44336', '#FFC107', '#4CAF50', '#03A9F4', '#9E9E9E', '#795548', '#9C27B0', '#8BC34A'];
+            return 'background:' + defaultColors[sum % defaultColors.length];
+        }
+
+        function sanitizeInput(input) {
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(input));
+            return div.innerHTML;
+        }
+
+        document.getElementById('join-btn').onclick = function() {
+            var nick = document.getElementById('nick-input').value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+            if (nick.length < 3 || nick.length > 15) { 
+                alert("Nickname must be between 3 and 15 alphanumeric characters!");
+                return; 
+            }
+
+            var userRef = db.ref('users/' + nick);
+            userRef.once('value', function(snapshot) {
+                if (snapshot.exists()) {
+                    alert("This nickname is ALREADY TAKEN!");
+                } else {
+                    userRef.set({ reg: true, color: '#00A3E0' }, function(error) {
+                        if (error) {
+                            alert("Database Error: " + error.message);
+                        } else {
+                            // Безопасная запись
+                            try {
+                                localStorage.setItem('foio_nick', nick);
+                                localStorage.setItem('foio_avatar_color', '#00A3E0'); 
+                            } catch(e) {}
+                            location.reload();
+                        }
+                    });
+                }
+            });
+        };
+
+        document.getElementById('send-btn').onclick = sendMessage;
+        function sendMessage() {
+            var text = document.getElementById('msg-input').value;
+            if (!text.trim() || !myNick) return;
+
+            var sanitizedText = sanitizeInput(text);
+
+            db.ref('messages').push({
+                nick: myNick,
+                text: sanitizedText,
+                time: Date.now(),
+                color: myAvatarColor,
+                os: osInfo 
+            }).catch(function(error) {
+                alert("Failed to send message: " + error.message);
+            });
+            document.getElementById('msg-input').value = "";
+        }
+
+        db.ref('messages').limitToLast(50).on('child_added', function(snap) {
+            var m = snap.val();
+            if (!m || typeof m.nick !== 'string' || typeof m.text !== 'string' || typeof m.time !== 'number') {
+                console.warn("Invalid message format received:", m);
+                m.os = m.os || 'Other'; 
+            }
+
+            var chat = document.getElementById('chat-container');
+            var msgDiv = document.createElement('div');
+            msgDiv.className = 'msg';
+            
+            var avatarColor = m.nick === myNick ? myAvatarColor : (m.color || getAvColor(m.nick).replace('background:', ''));
+            var avatarStyle = 'background:' + avatarColor;
+            
+            var sanitizedNick = sanitizeInput(m.nick);
+            var sanitizedText = sanitizeInput(m.text);
+
+            var osIconSrc = osIcons[m.os] || osIcons['Other'];
+            var osIconHtml = '';
+            if (osIconSrc) {
+                osIconHtml = `<img src="${osIconSrc}" class="os-icon" alt="${m.os} icon">`;
+            }
+            
+            msgDiv.innerHTML = '<div class="avatar" style="' + avatarStyle + '">' + sanitizedNick.charAt(0) + '</div>' +
+                               '<div class="msg-body">' +
+                               '<div class="nick-os-wrap">' +
+                               '<div class="nick">' + sanitizedNick + '</div>' +
+                               osIconHtml +
+                               '</div>' +
+                               '<div class="text">' + sanitizedText + '</div>' +
+                               '</div>';
+            chat.appendChild(msgDiv);
+            chat.scrollTop = chat.scrollHeight;
+        }, function(error) {
+            console.error("Firebase messages listener error:", error);
+        });
+
+        document.getElementById('msg-input').onkeypress = function(e) {
+            if (e.keyCode == 13) {
+                e.preventDefault();
+                sendMessage();
+            }
+        };
+
+        document.getElementById('settings-btn').onclick = function() {
+            document.getElementById('settings-popup').style.display = 'flex';
+            document.getElementById('new-nick-input').value = myNick;
+            
+            var savedColor = '#00A3E0';
+            try { savedColor = localStorage.getItem('foio_avatar_color') || '#00A3E0'; } catch(e) {}
+            document.getElementById('avatar-color-picker').value = savedColor;
+        };
+
+        document.getElementById('close-settings-btn').onclick = function() {
+            document.getElementById('settings-popup').style.display = 'none';
+        };
+
+        document.getElementById('save-color-btn').onclick = function() {
+            var newColor = document.getElementById('avatar-color-picker').value;
+            if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(newColor)) {
+                alert("Invalid color format!");
+                return;
+            }
+            
+            try { localStorage.setItem('foio_avatar_color', newColor); } catch(e) {}
+            myAvatarColor = newColor;
+
+            var myMessagesAvatars = document.querySelectorAll('.msg .avatar');
+            for (var i = 0; i < myMessagesAvatars.length; i++) {
+                if (sanitizeInput(myMessagesAvatars[i].textContent.toLowerCase()) === myNick.charAt(0).toLowerCase()) {
+                    myMessagesAvatars[i].style.background = newColor;
+                }
+            }
+            alert('Avatar color saved!');
+            document.getElementById('settings-popup').style.display = 'none';
+        };
+        
+        document.getElementById('change-nick-btn').onclick = function() {
+        var newNick = document.getElementById('new-nick-input').value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+            if (newNick.length < 3 || newNick.length > 15) { 
+                alert("New nickname must be between 3 and 15 alphanumeric characters!");
+                return; 
+            }
+            if (newNick === myNick) {
+                alert("New nickname is the same as current!");
+                return;
+            }
+
+            var userRef = db.ref('users/' + newNick);
+            userRef.once('value', function(snapshot) {
+                if (snapshot.exists()) {
+                    alert("This new nickname is ALREADY TAKEN!");
+                } else {
+                    showConfirmPopup("Change Nickname", "Are you sure you want to change your nickname from '" + sanitizeInput(myNick) + "' to '" + sanitizeInput(newNick) + "'?", function() {
+                        db.ref('users/' + myNick).remove()
+                            .then(function() {
+                                return db.ref('users/' + newNick).set({ reg: true, color: myAvatarColor });
+                            })
+                            .then(function() {
+                                try { localStorage.setItem('foio_nick', newNick); } catch(e) {}
+                                location.reload(); 
+                            })
+                            .catch(function(error) {
+                                alert("Failed to change nickname: " + error.message);
+                            });
+                    });
+                }
+            }, function(error) {
+                console.error("Firebase read error during nick change check:", error);
+                alert("Error checking nickname availability.");
+            });
+        };
+
+        document.getElementById('delete-account-btn').onclick = function() {
+            showConfirmPopup("Delete Account", "Are you absolutely sure you want to delete your account? This action cannot be undone.", function() {
+                showConfirmPopup("Final Confirmation", "Really delete '" + sanitizeInput(myNick) + "'? All your messages will remain, but you won't be able to use this nick again.", function() {
+                    db.ref('users/' + myNick).remove()
+                        .then(function() {
+                            try {
+                                localStorage.removeItem('foio_nick');
+                                localStorage.removeItem('foio_avatar_color');
+                            } catch(e) {}
+                            alert('Your account has been deleted!');
+                            location.reload(); 
+                        })
+                        .catch(function(error) {
+                             alert("Failed to delete account: " + error.message);
+                        });
+                });
+            });
+        };
+
+        function showConfirmPopup(title, message, onConfirm) {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-message').textContent = message;
+            document.getElementById('confirm-popup').style.display = 'flex';
+            currentConfirmAction = onConfirm;
+        }
+
+        document.getElementById('confirm-yes-btn').onclick = function() {
+            document.getElementById('confirm-popup').style.display = 'none';
+            if (currentConfirmAction) {
+                currentConfirmAction();
+            }
+            currentConfirmAction = null;
+        };
+        
+        document.getElementById('confirm-no-btn').onclick = function() {
+            document.getElementById('confirm-popup').style.display = 'none';
+            currentConfirmAction = null;
+        };
+    </script>
+</body>
+              </html>
+  
