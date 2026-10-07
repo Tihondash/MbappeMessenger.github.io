@@ -12,12 +12,11 @@
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body, html { margin: 0; padding: 0; height: 100%; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0b0e14; color: #fff; overflow: hidden; }
         
-        /* Цвета в стиле Мбаппе: Темно-синий и Золотой */
         :root {
-            --primary: #D4AF37; /* Золотой мяч */
+            --primary: #D4AF37;
             --primary-dark: #b5952f;
             --bg-dark: #0b0e14;
-            --header-bg: #0A1C56; /* Французский синий */
+            --header-bg: #0A1C56;
             --msg-bg: #161b22;
             --text-light: #e6edf3;
         }
@@ -53,7 +52,6 @@
         #btn-wrap { width: 90px; }
         #send-btn { border-radius: 20px; padding: 12px 0; font-size: 14px; }
 
-        /* Попапы */
         .popup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .popup-content { background: #161b22; padding: 25px; border-radius: 12px; border: 1px solid #30363d; box-shadow: 0 10px 30px rgba(0,0,0,0.8); width: 90%; max-width: 400px; text-align: center; }
         .popup-content h2, .popup-content h3 { margin-top: 0; color: var(--primary); }
@@ -128,7 +126,6 @@
     </div>
 
     <script>
-        // ТВОЯ БАЗА ДАННЫХ (Firebase)
         var firebaseConfig = {
             apiKey: "AIzaSyAh2y6xXfjpMUeGc-YpRHG1jcp4RNhdfNE",
             authDomain: "bingo--messenger.firebaseapp.com",
@@ -142,9 +139,10 @@
         firebase.initializeApp(firebaseConfig);
         var db = firebase.database();
 
-        // Локальное хранилище
         var myNick = null;
         var myAvatarColor = '#D4AF37'; 
+        var isInitialLoad = true; // Для предотвращения уведомлений при первой загрузке истории
+
         try {
             myNick = localStorage.getItem('mbappe_nick');
             myAvatarColor = localStorage.getItem('mbappe_avatar_color') || '#D4AF37'; 
@@ -162,6 +160,23 @@
             'Other': ''
         };
 
+        // Запрос разрешения на отправку уведомлений
+        function requestNotificationPermission() {
+            if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+                Notification.requestPermission();
+            }
+        }
+
+        // Функция отправки уведомления
+        function sendNotification(author, text) {
+            if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("MbappeMessenger: " + author, {
+                    body: text,
+                    icon: "https://cdn-icons-png.flaticon.com/128/33/33736.png" // Иконка мяча
+                });
+            }
+        }
+
         function getOS() {
             var ua = navigator.userAgent;
             if (/android/i.test(ua)) return "Android";
@@ -177,9 +192,9 @@
         } else {
             document.getElementById('new-nick-input').value = myNick;
             document.getElementById('avatar-color-picker').value = myAvatarColor;
+            requestNotificationPermission();
         }
 
-        // Футбольные дефолтные цвета для чужих аватаров
         function getAvColor(nick) {
             if (nick === myNick && myAvatarColor) return 'background:' + myAvatarColor;
             var sum = 0;
@@ -197,23 +212,24 @@
         document.getElementById('join-btn').onclick = function() {
             var nick = document.getElementById('nick-input').value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
             if (nick.length < 3 || nick.length > 15) { 
-                alert("Никнейм должен быть от 3 до 15 символов (только латиница и цифры)!");
+                alert("Никнейм должен быть от 3 до 15 символов!");
                 return; 
             }
 
             var userRef = db.ref('users/' + nick);
             userRef.once('value', function(snapshot) {
                 if (snapshot.exists()) {
-                    alert("Этот номер (никнейм) уже занят другим игроком!");
+                    alert("Этот никнейм уже занят!");
                 } else {
                     userRef.set({ reg: true, color: '#D4AF37' }, function(error) {
                         if (error) {
-                            alert("Ошибка трансфера (БД): " + error.message);
+                            alert("Ошибка БД: " + error.message);
                         } else {
                             try {
                                 localStorage.setItem('mbappe_nick', nick);
                                 localStorage.setItem('mbappe_avatar_color', '#D4AF37'); 
                             } catch(e) {}
+                            requestNotificationPermission();
                             location.reload();
                         }
                     });
@@ -234,7 +250,7 @@
                 color: myAvatarColor,
                 os: osInfo 
             }).catch(function(error) {
-                alert("Пас не прошел: " + error.message);
+                alert("Ошибка отправки: " + error.message);
             });
             document.getElementById('msg-input').value = "";
         }
@@ -244,6 +260,7 @@
             if (e.keyCode == 13) { e.preventDefault(); sendMessage(); }
         };
 
+        // Чтение сообщений из Firebase
         db.ref('messages').limitToLast(50).on('child_added', function(snap) {
             var m = snap.val();
             if (!m) return;
@@ -271,6 +288,18 @@
                                '</div>';
             chat.appendChild(msgDiv);
             chat.scrollTop = chat.scrollHeight;
+
+            // Логика отправки системного уведомления
+            if (!isInitialLoad && m.nick !== myNick) {
+                sendNotification(m.nick, m.text);
+            }
+        });
+
+        // После загрузки первых старых сообщений включаем отслеживание новых
+        db.ref('messages').limitToLast(1).once('value', function() {
+            setTimeout(function() {
+                isInitialLoad = false;
+            }, 1000);
         });
 
         // Настройки
@@ -320,7 +349,7 @@
 
         document.getElementById('delete-account-btn').onclick = function() {
             showConfirm("Уход из клуба", "Навсегда удалить аккаунт?", function() {
-                showConfirm("VAR", "Точно удалить '" + myNick + "'? Сообщения останутся на поле.", function() {
+                showConfirm("VAR", "Точно удалить '" + myNick + "'? Сообщения останутся.", function() {
                     db.ref('users/' + myNick).remove().then(() => {
                         try { localStorage.removeItem('mbappe_nick'); localStorage.removeItem('mbappe_avatar_color'); } catch(e) {}
                         location.reload(); 
@@ -329,7 +358,6 @@
             });
         };
 
-        // Логика попапа подтверждения (VAR)
         function showConfirm(title, message, onConfirm) {
             document.getElementById('confirm-title').textContent = title;
             document.getElementById('confirm-message').textContent = message;
