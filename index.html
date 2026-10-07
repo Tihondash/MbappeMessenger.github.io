@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>MbappeMessenger 🐢</title>
-    <!-- Подключение Firebase v8 -->
+    <!-- Firebase v8 -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -141,7 +141,11 @@
 
         var myNick = null;
         var myAvatarColor = '#D4AF37'; 
-        var isInitialLoad = true; // Для предотвращения уведомлений при первой загрузке истории
+        var isInitialLoad = true;
+        var swRegistration = null;
+
+        // Звук нового сообщения
+        var notifySound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
         try {
             myNick = localStorage.getItem('mbappe_nick');
@@ -160,20 +164,69 @@
             'Other': ''
         };
 
-        // Запрос разрешения на отправку уведомлений
-        function requestNotificationPermission() {
-            if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-                Notification.requestPermission();
+        // Автоматическая регистрация фейкового Service Worker на лету через Blob
+        if ('serviceWorker' in navigator) {
+            var swCode = `
+                self.addEventListener('notificationclick', function(event) {
+                    event.notification.close();
+                    event.waitUntil(
+                        clients.matchAll({ type: 'window' }).then(function(clientList) {
+                            for (var i = 0; i < clientList.length; i++) {
+                                var client = clientList[i];
+                                if (client.url && 'focus' in client) return client.focus();
+                            }
+                            if (clients.openWindow) return clients.openWindow('/');
+                        })
+                    );
+                });
+            `;
+            var blob = new Blob([swCode], { type: 'application/javascript' });
+            var blobUrl = URL.createObjectURL(blob);
+            
+            navigator.serviceWorker.register(blobUrl).then(function(reg) {
+                swRegistration = reg;
+            }).catch(function(err) {
+                console.log("ServiceWorker fallback: ", err);
+            });
+        }
+
+        // Функция показа push-уведомлений
+        function sendNotification(author, text) {
+            // Воспроизвести звук
+            notifySound.play().catch(function(){});
+
+            // Изменить заголовок вкладки
+            document.title = "⚽ " + author + ": " + text;
+
+            if ("Notification" in window && Notification.permission === "granted") {
+                var options = {
+                    body: text,
+                    icon: "https://cdn-icons-png.flaticon.com/128/33/33736.png",
+                    badge: "https://cdn-icons-png.flaticon.com/128/33/33736.png",
+                    vibrate: [200, 100, 200],
+                    tag: 'mbappe-chat-msg'
+                };
+
+                // Приоритет 1: Через Service Worker (работает на мобильных и в фоновом режиме)
+                if (swRegistration && swRegistration.showNotification) {
+                    swRegistration.showNotification("MbappeMessenger: " + author, options);
+                } else {
+                    // Приоритет 2: Прямой вызов
+                    try {
+                        var n = new Notification("MbappeMessenger: " + author, options);
+                        n.onclick = function() { window.focus(); this.close(); };
+                    } catch(e) {}
+                }
             }
         }
 
-        // Функция отправки уведомления
-        function sendNotification(author, text) {
-            if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("MbappeMessenger: " + author, {
-                    body: text,
-                    icon: "https://cdn-icons-png.flaticon.com/128/33/33736.png" // Иконка мяча
-                });
+        window.onfocus = function() {
+            document.title = "MbappeMessenger 🐢";
+        };
+
+        function requestNotificationPermission() {
+            if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+                Notification.requestPermission();
             }
         }
 
@@ -211,15 +264,12 @@
 
         document.getElementById('join-btn').onclick = function() {
             var nick = document.getElementById('nick-input').value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-            if (nick.length < 3 || nick.length > 15) { 
-                alert("Никнейм должен быть от 3 до 15 символов!");
-                return; 
-            }
+            if (nick.length < 3 || nick.length > 15) return alert("Ник от 3 до 15 символов!");
 
             var userRef = db.ref('users/' + nick);
             userRef.once('value', function(snapshot) {
                 if (snapshot.exists()) {
-                    alert("Этот никнейм уже занят!");
+                    alert("Ник занят!");
                 } else {
                     userRef.set({ reg: true, color: '#D4AF37' }, function(error) {
                         if (error) {
@@ -249,8 +299,6 @@
                 time: Date.now(),
                 color: myAvatarColor,
                 os: osInfo 
-            }).catch(function(error) {
-                alert("Ошибка отправки: " + error.message);
             });
             document.getElementById('msg-input').value = "";
         }
@@ -260,7 +308,7 @@
             if (e.keyCode == 13) { e.preventDefault(); sendMessage(); }
         };
 
-        // Чтение сообщений из Firebase
+        // Слушатель Firebase
         db.ref('messages').limitToLast(50).on('child_added', function(snap) {
             var m = snap.val();
             if (!m) return;
@@ -289,27 +337,20 @@
             chat.appendChild(msgDiv);
             chat.scrollTop = chat.scrollHeight;
 
-            // Логика отправки системного уведомления
+            // Если сообщение новое и от чужого ника — отправляем уведомление
             if (!isInitialLoad && m.nick !== myNick) {
                 sendNotification(m.nick, m.text);
             }
         });
 
-        // После загрузки первых старых сообщений включаем отслеживание новых
+        // Защита от спама уведомлениями при загрузке старой истории
         db.ref('messages').limitToLast(1).once('value', function() {
-            setTimeout(function() {
-                isInitialLoad = false;
-            }, 1000);
+            setTimeout(function() { isInitialLoad = false; }, 1200);
         });
 
         // Настройки
-        document.getElementById('settings-btn').onclick = function() {
-            document.getElementById('settings-popup').style.display = 'flex';
-        };
-
-        document.getElementById('close-settings-btn').onclick = function() {
-            document.getElementById('settings-popup').style.display = 'none';
-        };
+        document.getElementById('settings-btn').onclick = function() { document.getElementById('settings-popup').style.display = 'flex'; };
+        document.getElementById('close-settings-btn').onclick = function() { document.getElementById('settings-popup').style.display = 'none'; };
 
         document.getElementById('save-color-btn').onclick = function() {
             var newColor = document.getElementById('avatar-color-picker').value;
@@ -349,7 +390,7 @@
 
         document.getElementById('delete-account-btn').onclick = function() {
             showConfirm("Уход из клуба", "Навсегда удалить аккаунт?", function() {
-                showConfirm("VAR", "Точно удалить '" + myNick + "'? Сообщения останутся.", function() {
+                showConfirm("VAR", "Точно удалить '" + myNick + "'?", function() {
                     db.ref('users/' + myNick).remove().then(() => {
                         try { localStorage.removeItem('mbappe_nick'); localStorage.removeItem('mbappe_avatar_color'); } catch(e) {}
                         location.reload(); 
@@ -378,3 +419,4 @@
     </script>
 </body>
 </html>
+ 
